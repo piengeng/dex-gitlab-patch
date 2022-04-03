@@ -1,5 +1,5 @@
 # dex-gitlab-patch
-patch file for https://github.com/dexidp/dex/tree/master/server, making mattermost team edition works with dex (implicitly openldap)
+patch file for https://github.com/dexidp/dex/tree/master/server, making mattermost team edition works with dex v2.31.1 (implicitly openldap)
 
 notes:
 - minimal modification to make mattermost team edition works with dex (so, openldap)
