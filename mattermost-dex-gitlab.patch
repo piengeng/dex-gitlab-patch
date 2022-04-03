@@ -1,0 +1,81 @@
+diff --git a/server/gitlab.go b/server/gitlab.go
+new file mode 100644
+index 0000000..28ecb20
+--- /dev/null
++++ b/server/gitlab.go
+@@ -0,0 +1,36 @@
++package server
++
++import (
++	"encoding/json"
++	"fmt"
++	"hash/crc32"
++	"strings"
++)
++
++// https://github.com/mattermost/mattermost-server/blob/master/model/gitlab/gitlab.go
++type GitLabUser struct {
++	Id       int64  `json:"id"`
++	Username string `json:"username"`
++	Login    string `json:"login"`
++	Email    string `json:"email"`
++	Name     string `json:"name"`
++}
++
++func convertClaimsGitlabUser(claims json.RawMessage) []byte {
++	var glu GitLabUser
++	var msi map[string]interface{}
++	json.Unmarshal(claims, &msi)
++	for k, v := range msi {
++		if k == "name" {
++			glu.Name = fmt.Sprintf("%s", v)
++		}
++		if k == "email" {
++			glu.Email = fmt.Sprintf("%s", v)
++		}
++	}
++	glu.Id = int64(crc32.ChecksumIEEE([]byte(glu.Email)))
++	glu.Username = ""
++	glu.Login = strings.Split(glu.Email, "@")[0]
++	b, _ := json.Marshal(glu)
++	return b
++}
+diff --git a/server/handlers.go b/server/handlers.go
+index acbf4ec..eaec098 100755
+--- a/server/handlers.go
++++ b/server/handlers.go
+@@ -144,6 +144,7 @@ func (s *Server) handleAuthorization(w http.ResponseWriter, r *http.Request) {
+ 
+ 	// We don't need connector_id any more
+ 	r.Form.Del("connector_id")
++	r.Form.Add("scope", "openid profile email") // backward compatibility gitlab oauth2 != dex's oidc
+ 
+ 	// Construct a URL with all of the arguments in its query
+ 	connURL := url.URL{
+@@ -1012,7 +1013,7 @@ func (s *Server) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 
+ 	w.Header().Set("Content-Type", "application/json")
+-	w.Write(claims)
++	w.Write(convertClaimsGitlabUser(claims))
+ }
+ 
+ func (s *Server) handlePasswordGrant(w http.ResponseWriter, r *http.Request, client storage.Client) {
+diff --git a/server/server.go b/server/server.go
+index 6b653fd..0ce80ab 100755
+--- a/server/server.go
++++ b/server/server.go
+@@ -347,10 +347,10 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
+ 	handleWithCORS("/.well-known/openid-configuration", discoveryHandler)
+ 
+ 	// TODO(ericchiang): rate limit certain paths based on IP.
+-	handleWithCORS("/token", s.handleToken)
++	handleWithCORS("/oauth/token", s.handleToken)
+ 	handleWithCORS("/keys", s.handlePublicKeys)
+-	handleWithCORS("/userinfo", s.handleUserInfo)
+-	handleFunc("/auth", s.handleAuthorization)
++	handleWithCORS("/api/v4/user", s.handleUserInfo)
++	handleFunc("/oauth/authorize", s.handleAuthorization)
+ 	handleFunc("/auth/{connector}", s.handleConnectorLogin)
+ 	handleFunc("/auth/{connector}/login", s.handlePasswordLogin)
+ 	handleFunc("/device", s.handleDeviceExchange)
